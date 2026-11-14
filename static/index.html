@@ -53,12 +53,16 @@
         <div id="zoom-controls" class="zoom-controls" hidden><label for="zoom">景别</label><input id="zoom" type="range" min="1" max="1.6" step="0.01" value="1"><output id="zoom-value" for="zoom">1.00×</output><label><input id="auto-zoom" type="checkbox" checked><span id="auto-zoom-label">自动匹配</span></label></div>
         <div id="demo-controls" class="preview-controls" hidden><span id="demo-help">演示模式使用近似方向跟随，站位和动作由你确认。</span><button id="demo-next" type="button">确认对准</button></div>
         <div id="preview-controls" class="preview-controls" hidden>
-          <label>导拍<select id="guide-mode"><option value="demo">录制演示</option><option value="live">实时识别</option></select></label>
-          <label>预览<select id="preview-quality"><option value="720">流畅优先 · 720p</option><option value="1080">清晰优先 · 1080p</option></select></label>
+          <label>导拍<select id="guide-mode"><option value="live">实时识别</option><option value="demo">录制演示</option></select></label>
+          <label>预览<select id="preview-quality"><option value="720">流畅优先 · 720p</option><option value="480">低负载 · 480p</option><option value="1080">清晰优先 · 1080p</option></select></label>
           <button id="pause-analysis" type="button" aria-pressed="false">暂停识别</button>
           <label><input id="show-guides" type="checkbox" checked>显示辅助线</label>
           <span id="preview-status">预览优先，识别最多每秒一次</span>
         </div>
+        <details id="performance-details" hidden style="margin:8px 16px;font-size:12px">
+          <summary>卡顿排查数据</summary>
+          <p id="performance-values" style="white-space:pre-line;line-height:1.7"></p>
+        </details>
         <div class="controls">
           <button id="camera" type="button">开启相机</button><button id="flip" type="button" hidden>切换镜头</button>
           <button id="choose-live" type="button">用照片试拍</button><input id="live-file" type="file" accept="image/jpeg,image/png,image/webp" hidden>

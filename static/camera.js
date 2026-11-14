@@ -30,6 +30,8 @@ const demoMarker = new DemoMarker(el("demo-aim"), el("demo-dot"), () => {
 let analysisPaused = false, networkPaused = false, nextAnalysisAt = 0;
 let measuredFrames = 0, lastMeasuredFrames = null, lastPreviewMeasure = 0, previewFrameRequest = null;
 let prepareMs = 0, requestMs = 0, serverMs = 0;
+let samplingPath = "canvas", sampleMainMs = 0, sampleWorkerMs = 0, sampleBytes = 0;
+let latestCapturedAt = 0;
 let lastAnalysisStarted = 0, completedAnalyses = 0;
 const analysisCanvas = document.createElement("canvas");
 let seq = 0, pendingTap = null, latest = null, busy = false, shotRequested = false;
@@ -646,6 +648,10 @@ async function analyze() {
     const blob = prepared?.blob || await jpeg(taking && nativeAndroid ? sampledShot(taking)
       : taking || snapshot(nativeAndroid ? 640 : 960, analysisCanvas), nativeAndroid ? .75 : taking ? .94 : .9);
     prepareMs = performance.now()-lastAnalysisStarted;
+    samplingPath = prepared?.path || "canvas";
+    sampleMainMs = prepared?.mainMs ?? prepareMs;
+    sampleWorkerMs = prepared?.workerMs ?? 0;
+    sampleBytes = blob.size;
     if (version !== generation) return;
     const query = new URLSearchParams({seq:++seq, source:sourceVersion, skip:[...skipped].join(",")});
     if (tap) {query.set("x", tap[0]); query.set("y", tap[1]);}
@@ -663,6 +669,7 @@ async function analyze() {
     }
     pendingTap = null;
     lastAnalyzed = performance.now();
+    latestCapturedAt = lastAnalysisStarted;
     framingSequence.finishVerification();
     mirrorFrames = ["background", "framing"].includes(result.stage) && result.background?.control === "mirror" ? mirrorFrames + 1 : 0;
     if (mirrorFrames >= 2 && !taking && !manualDirection && autoFlippedSource !== sourceVersion) {
@@ -739,6 +746,10 @@ el("download-shot").onclick = async event => {
 
 el("shutter").onclick = async () => {
   if (!latest?.ready || shotRequested) return;
+  if (nativeAndroid && !isDemo() && performance.now()-latestCapturedAt > 3500) {
+    display(null); tell("相机", "等待新的取景画面", "search");
+    return;
+  }
   shotRequested = snapshot(Infinity);
   el("shutter").disabled = true;
   if (isDemo()) {
@@ -808,12 +819,29 @@ if (nativeAndroid) setInterval(() => {
   el("preview-status").textContent = (fps === null ? "本地预览" : "预览约 " + Math.round(fps) + " 帧/秒") +
     (isDemo() ? " · 演示模式 · 手动确认" : analysisPaused ? " · 识别已暂停" : " · 识别最多每秒一次");
   window.__guidePerformance = {previewFps:fps,prepareMs,requestMs,serverMs,completedAnalyses,worker:!!sampler.worker,busy,analysisPaused,
+    samplingPath,sampleMainMs,sampleWorkerMs,sampleBytes,
+    cameraSettings:stream?.getVideoTracks()[0]?.getSettings(),
     guidesVisible:el("show-guides").checked,overlayPaints,overlayMs,longTaskMs,mode:isDemo()?"demo":"live"};
+  const details = el("performance-details");
+  details.hidden = false;
+  if (details.open) {
+    const settings = window.__guidePerformance.cameraSettings || {};
+    el("performance-values").textContent = `相机 ${settings.width || "?"}×${settings.height || "?"} · 设备报告 ${Math.round(settings.frameRate || 0)} 帧/秒\n` +
+      `最近一次取样 ${Math.round(prepareMs)} ms（前端准备 ${Math.round(sampleMainMs)} ms，后台处理 ${Math.round(sampleWorkerMs)} ms）\n` +
+      `请求往返 ${Math.round(requestMs)} ms · 电脑处理 ${Math.round(serverMs)} ms · 图片 ${(sampleBytes/1024).toFixed(0)} KB\n` +
+      `处理路径 ${samplingPath} · 本秒界面长任务 ${Math.round(longTaskMs)} ms\n` +
+      "往返减去电脑处理仍包含桥接、上传和下载，不等于纯 Wi-Fi 延迟。";
+  }
   overlayPaints = overlayMs = longTaskMs = 0;
 }, 1000);
 
 setInterval(() => {
   if (isDemo()) return;
+  // Expire the previous result even while the next request is still running.
+  // A response received recently may itself describe an old camera frame.
+  if (nativeAndroid && source === "camera" && latest && performance.now()-latestCapturedAt > 3500) {
+    display(null); tell("相机", "等待新的取景画面", "search");
+  }
   if (source === "camera" && latest && !busy && !framingSequence.sample(performance.now()).blockAnalysis && performance.now() - lastAnalyzed > 2500) {
     display(null);
     tell("相机", "等待新的取景画面", "search");

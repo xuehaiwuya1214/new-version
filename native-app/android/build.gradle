@@ -17,6 +17,11 @@ buildscript {
 apply from: "variables.gradle"
 
 allprojects {
+    // Capacitor library modules otherwise ask Gradle to download Build-Tools 35.
+    // Use the same installed/pinned toolchain as the app and packaging scripts.
+    plugins.withId('com.android.library') {
+        android.buildToolsVersion '36.0.0'
+    }
     repositories {
         google()
         mavenCentral()
