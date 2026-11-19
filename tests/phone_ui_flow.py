@@ -55,13 +55,14 @@ Capacitor.Plugins.CapacitorHttp.request=async o=>{
  if(o.url.endsWith('/api/session')) {
   qa.sessions.push(o.data);
   const aspect=Number(o.data.find(p=>p.key==='aspect')?.value||.75);
-  Object.assign(r.data.reference,{width:720*aspect,height:720,box:[.25,.4,.6,.9],
+  Object.assign(r.data.reference,{workflow:"composition",farBounds:[.12,.1,.45,.42],width:720*aspect,height:720,box:[.25,.4,.6,.9],
    outline:{kind:'person',contours:[[[.25,.4],[.6,.4],[.6,.9],[.25,.9]]],details:[]},
    backgroundOutline:{paths:[[[.15,.1],[.85,.1],[.85,.8]]]}});
  }
  if(o.url.includes('/frame?')) Object.assign(r.data,{stage:qa.stage,ready:qa.stage==='ready',mode:'adjust',
    message:qa.stage==='pose'?(qa.frames.length%2?'右手抬高一点':'肩膀放松一点'):'转动手机，让白点靠近白环',
-   completed:qa.stage==='background'?[]:['background'],checks:[true,true,true,false]});
+   pose:qa.stage==='pose'?{actual:[],target:[],joint:null}:null,
+   completed:qa.stage==='background'?[]:['background'],checks:[true,true,true,true,qa.stage!=='position',false]});
  return r;
 };
 const camera=navigator.mediaDevices.getUserMedia;
@@ -147,6 +148,11 @@ def main():
             page.locator('#use-reference').click()
             expect(page.locator('body')).to_have_attribute('data-phone-phase','guide')
             assert len(page.evaluate('qa.sessions'))==1
+            assert page.evaluate("qa.sessions[0].some(p => p.key==='workflow' && p.value==='composition')")
+            for stage, caption in [('distance','摄影距离'), ('framing','调整倍率'), ('recenter','复核中心'), ('position','05 / 人物位置')]:
+                page.evaluate('stage => qa.stage=stage', stage)
+                expect(page.locator('#phone-stage')).to_contain_text(caption,timeout=8000)
+                expect(page.locator('#shutter')).to_be_disabled()
             page.screenshot(path=qa/'phone-03-guide.png')
             page.evaluate("qa.stage='pose';window.hintTrace=[];new MutationObserver(()=>{const text=document.querySelector('#hint').textContent;if(!hintTrace.length||hintTrace.at(-1).text!==text)hintTrace.push({at:performance.now(),text});}).observe(document.querySelector('#hint'),{childList:true,subtree:true,characterData:true});")
             expect(page.locator('#pose-count')).to_be_visible(timeout=6000)

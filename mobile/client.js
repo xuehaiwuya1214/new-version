@@ -54,6 +54,7 @@ export async function openGuide(form, image, progress) {
   const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", await file.arrayBuffer()));
   const key = Array.from(hash, byte => byte.toString(16).padStart(2,"0")).join("");
   const options = {mirror:form.get("mirror") === "1", tap:tap(form), viewpoint:(form.get("viewpoint") || notes[key] || "").slice(0,100)};
+  options.farPoint = form.has("farX") ? [Number(form.get("farX")), Number(form.get("farY"))] : null;
   return request("open", {sid:crypto.randomUUID(), ...frame, options}, progress);
 }
 

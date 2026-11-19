@@ -2,7 +2,7 @@ const gold = "#ffcf69";
 const mint = "#53f2c8";
 const white = "#fffdf8";
 const cyan = "#81e5ff";
-const red = "#ff444f";
+const sand = "#e3c79e";
 const staticLayers = new WeakMap();
 const nativePreview = !!document.querySelector('meta[name="guide-native"][content="android"]');
 
@@ -98,9 +98,7 @@ function referenceJoints(d, points, edges) {
 
 function standingBox(d, box) {
   const [x, y, r, b] = box;
-  d.ctx.fillStyle = "#ff444f0a";
-  d.ctx.fillRect(x*d.w, y*d.h, (r-x)*d.w, (b-y)*d.h);
-  path(d, [[x,y], [r,y], [r,b], [x,b], [x,y]], red, 2.4);
+  path(d, [[x,y], [r,y], [r,b], [x,b], [x,y]], sand, 2);
 }
 
 function poseOutline(d, outline) {
@@ -247,7 +245,12 @@ function alignedPulse(d, progress) {
 export function drawReference(canvas, ref, stage) {
   const d = drawing(canvas);
   if (!d || !ref) return;
-  if (!stage || stage === "background") {
+  if (stage === "distance") {
+    if (ref.farBounds) corners(d, ref.farBounds, cyan);
+    if (ref.box) corners(d, ref.box, gold);
+    return;
+  }
+  if (!stage || stage === "background" || stage === "recenter") {
     d.ctx.shadowColor = "#10211d";
     d.ctx.shadowBlur = 4;
     circle(d, ref.aimPoint || [.5, .5], Math.max(5, Math.min(d.w, d.h)*.024), white, true);
@@ -269,6 +272,14 @@ export function drawReference(canvas, ref, stage) {
 }
 
 function drawStage(d, result, ref, stage, aim, framing) {
+  if (stage === "recenter") {
+    backgroundRings(d, result?.background, null);
+    return;
+  }
+  if (stage === "distance") {
+    if (result?.selected) corners(d, result.selected, mint);
+    return;
+  }
   if (stage === "background") {
     backgroundRings(d, result?.background, aim);
     return;
@@ -283,15 +294,26 @@ function drawStage(d, result, ref, stage, aim, framing) {
   if (stage === "position" && ref.box) standingBox(d, ref.box);
   if (result?.selected && (stage === "position" || stage === "ready" || result.boxes.length > 1))
     corners(d, result.selected, mint);
+  if (stage === "position" && result?.position?.basis && !result.position.ok) {
+    circle(d, result.position.target, 4, sand + "b3");
+    circle(d, result.position.current, 2, mint + "b3", true);
+  }
   if (stage !== "pose") return;
+  const pose = result?.pose;
+  d.ctx.save();
+  if (pose?.transform) {
+    const {scale, offset} = pose.transform;
+    d.ctx.translate(offset[0] * d.w, offset[1] * d.h);
+    d.ctx.scale(scale, scale);
+  }
   if (ref.outline) staticLayer(d,ref.outline,"pose", layer => poseOutline(layer, ref.outline));
   else referenceJoints(d, ref.points, ref.edges);
-  const pose = result?.pose;
+  d.ctx.restore();
   if (!pose) return;
   for (const p of pose.actual) {
     if (p) circle(d, p, 2, "#53f2c8c9", true);
   }
-  const goal = ref.points[pose.joint];
+  const goal = (pose.target || ref.points)[pose.joint];
   if (!goal) return;
   circle(d, goal, 7, white);
   const current = pose.actual[pose.joint];

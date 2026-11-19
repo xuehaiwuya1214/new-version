@@ -9,7 +9,7 @@
   <header><div class="brand"><span class="mark" aria-hidden="true"></span>校园人像导拍</div><span id="source-state">尚未取景</span></header>
   <main>
     <div id="offline" class="offline" hidden><span id="offline-status" role="status">正在检查离线文件</span><button id="offline-download" type="button">下载离线包</button></div>
-    <div class="top"><h1>跟拍参考照</h1><ol id="steps" aria-label="拍摄进度"><li>对准</li><li>景别</li><li>站位</li><li>姿势</li><li>拍摄</li></ol></div>
+    <div class="top"><h1>跟拍参考照</h1><ol id="steps" aria-label="拍摄进度"><li>粗对准</li><li>摄影距离</li><li>倍率</li><li>复核中心</li><li>人物位置</li><li>姿势</li><li>拍摄</li></ol></div>
     <details id="library-panel" class="library-panel" open>
       <summary>选一张校园参考照 <span id="library-count"></span></summary>
       <div class="library-content">
@@ -73,7 +73,7 @@
           <progress id="hold" max="1" value="0" aria-label="稳定进度" hidden></progress>
         </div>
         <div id="zoom-controls" class="zoom-controls" hidden><label for="zoom" id="zoom-kind">画面放大</label><input id="zoom" type="range" min="1" max="1.6" step="0.01" value="1"><output id="zoom-value" for="zoom">1.00×</output><label><input id="auto-zoom" type="checkbox" checked><span id="auto-zoom-label">自动匹配</span></label></div>
-        <div id="demo-controls" class="preview-controls" hidden><span id="demo-help">演示模式使用近似方向跟随，站位和动作由你确认。</span><button id="demo-next" type="button">确认对准</button></div>
+        <div id="demo-controls" class="preview-controls" hidden><span id="demo-help">演示模式使用近似方向跟随，摄影距离、构图和动作由你确认。</span><button id="demo-next" type="button">确认对准</button></div>
         <div id="preview-controls" class="preview-controls" hidden>
           <label>导拍<select id="guide-mode"><option value="live">实时识别</option><option value="demo">录制演示</option></select></label>
           <label>预览<select id="preview-quality"><option value="720">流畅优先 · 720p</option><option value="480">低负载 · 480p</option><option value="1080">清晰优先 · 1080p</option></select></label>
@@ -98,7 +98,7 @@
         <div class="ref-heading"><h2>参考照</h2><button id="choose-ref" type="button">打开照片</button></div>
         <input id="ref-file" type="file" accept="image/jpeg,image/png,image/webp" hidden>
         <div id="ref-box"><p id="ref-empty">载入一张校园人像</p><div id="ref-surface" hidden><img id="reference" alt="已选的参考人像"><canvas id="ref-overlay" aria-label="点选参考照中的主角"></canvas></div></div>
-        <div class="ref-details"><strong id="filename">尚未载入</strong><p id="viewpoint"></p><p id="subject-note">若画面中有多人，可以点选照片里的主角。</p><button type="button" id="mirror-ref" aria-pressed="false" hidden>水平翻转参考照</button></div>
+        <div class="ref-details"><strong id="filename">尚未载入</strong><p id="viewpoint"></p><p id="subject-note">若画面中有多人，可以点选照片里的主角。</p><button type="button" id="mark-far" hidden>标记远景</button><button type="button" id="mirror-ref" aria-pressed="false" hidden>水平翻转参考照</button></div>
       </aside>
     </div>
   </main>

@@ -177,9 +177,15 @@ def test_local_matches_on_either_side_project_the_same_reference_center():
         assert close["quad"] is None and close["tracking"] and close["ok"]
 
 
+def shared_photos():
+    root = Path(__file__).resolve().parents[2]
+    shared = root / "校园摄影参考库_队友分享_98张"
+    return shared if shared.is_dir() else root / "campus-photo-recommend/data/formal/images"
+
+
 @pytest.fixture(scope="module")
 def campus_photo():
-    photo = next(Path(__file__).resolve().parents[2].glob("校园摄影*/**/REF_011.webp"), None)
+    photo = next(shared_photos().rglob("REF_011.webp"), None)
     if photo is None:
         pytest.skip("需要共享参考库中的 REF_011.webp")
     return decode(photo.read_bytes())
@@ -416,7 +422,7 @@ def test_learned_landmarks_map_to_the_same_frame_coordinates(campus_photo):
 
 
 def test_independent_arcade_view_and_unrelated_lawn(campus_photo):
-    library = Path(__file__).resolve().parents[2] / "校园摄影参考库_队友分享_98张"
+    library = shared_photos()
     files = [next(library.rglob(f"REF_{key}.webp"), None) for key in ("025", "026", "051", "046", "095")]
     if None in files:
         pytest.skip("需要共享参考库中的拱廊和草坪样例")
@@ -437,7 +443,7 @@ def test_independent_arcade_view_and_unrelated_lawn(campus_photo):
 
 
 def test_building_outline_uses_visible_geometry_on_an_unlabelled_reference():
-    library = Path(__file__).resolve().parents[2] / "校园摄影参考库_队友分享_98张"
+    library = shared_photos()
     photo = next(library.rglob("REF_046.webp"), None)
     if photo is None:
         pytest.skip("需要共享参考库中的草坪圆塔照片")
@@ -543,7 +549,7 @@ def test_image_inference_finds_a_lowered_wrist_and_keeps_background_and_position
 
 
 def test_two_independent_lawn_photos_share_landmark_but_need_different_stances():
-    library = Path(__file__).resolve().parents[2] / "校园摄影参考库_队友分享_98张"
+    library = shared_photos()
     photos = [next(library.rglob(f"REF_{key}.webp"), None) for key in ("051", "052")]
     if None in photos:
         pytest.skip("需要共享参考库红椅机位的 REF_051、REF_052")

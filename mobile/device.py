@@ -21,7 +21,7 @@ async def open_reference(sid, pixels, width, height, options_json):
     if options["mirror"]:
         image = cv2.flip(image, 1)
     tap = options["tap"]
-    guide = await Guide.create(models, image, options["viewpoint"], tap)
+    guide = await Guide.create(models, image, options["viewpoint"], tap, composition=True, far_point=options.get("farPoint"))
     sessions[sid] = guide
     return json.dumps({"id": sid, "reference": guide.reference}, ensure_ascii=False)
 

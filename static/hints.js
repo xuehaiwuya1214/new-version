@@ -27,7 +27,7 @@ export class HintPacer {
 export function conciseHint(message,stage) {
   const text=String(message || '').trim();
   if (stage==='ready' && /拍摄|拍好|保持/.test(text)) return '可以拍摄了';
-  const defaults={background:'转动手机，让白点靠近白环',framing:'稳住手机，匹配背景大小',position:'请模特站进参考框',pose:'跟随轮廓，放松调整动作'};
+  const defaults={background:'转动手机，让白点靠近白环',framing:'稳住手机，匹配背景大小',distance:'保持坐位或靠点，核对人与远景比例',recenter:'保持倍率，复核中心',position:'对照人物框核对位置',pose:'跟随轮廓，放松调整动作'};
   if (/等待新的取景|正在读取取景|等待较新的识别/.test(text)) return '保持取景，正在识别';
   if (/保持手机平稳.*匹配/.test(text)) return '稳住手机，正在调整倍率';
   if (/白点.*白环|白点.*中心环/.test(text)) return defaults.background;

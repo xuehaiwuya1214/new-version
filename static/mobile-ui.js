@@ -130,7 +130,7 @@ export function setupPhone({startCamera,search,changeZoom,rechoose}) {
     el('zoom-dial').disabled=!source;
     setText('dial-value',Number(zoom.toFixed(1))+'×');
     setAttribute('aria-valuenow',zoom.toFixed(2));setAttribute('aria-valuemin',min);setAttribute('aria-valuemax',max);
-    const phases={background:'01 / 对准背景',framing:'02 / 匹配景别',position:'03 / 人物站位',pose:'04 / 调整姿势',ready:'准备拍摄'};
+    const phases={background:'01 / 对准背景',distance:'02 / 摄影距离',recenter:'04 / 复核中心',framing:reference?.workflow==='composition'?'03 / 调整倍率':'02 / 匹配景别',position:reference?.workflow==='composition'?'05 / 人物位置':'03 / 人物站位',pose:reference?.workflow==='composition'?'06 / 微调姿势':'04 / 调整姿势',ready:'准备拍摄'};
     setText('phone-stage',poseDone?'准备拍摄':reference?(phases[stage]||'准备参考照'):'寻找灵感');
     el('pose-count').hidden=stage!=='pose';
     const counter=`姿势建议 ${poseRound || 1}/5`;

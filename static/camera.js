@@ -17,9 +17,13 @@ import {nativeCameraAvailable, nativeCamera} from './native-camera.js';
 const el = id => document.getElementById(id);
 const video = el("video"), livePhoto = el("live-photo"), refPhoto = el("reference");
 const surface = el("surface"), refSurface = el("ref-surface");
-const stages = ["background", "framing", "position", "pose", "ready"];
-const stageNames = ["对准", "景别", "站位", "姿势", "拍摄"];
-const actors = ["摄影者 · 对准中心", "摄影者 · 调整景别", "模特 · 调整站位", "模特 · 调整姿势", "摄影者 · 拍摄"];
+const compositionStages = ["background", "distance", "framing", "recenter", "position", "pose", "ready"];
+const stageNames = {background:"粗对准", distance:"摄影距离", framing:"倍率", recenter:"复核中心",
+  position:"人物位置", pose:"姿势", ready:"拍摄"};
+const actors = {background:"摄影者 · 粗对准中心", distance:"摄影者 · 调整距离", framing:"摄影者 · 调整景别",
+  recenter:"摄影者 · 复核中心", position:"核对人物位置", pose:"模特 · 微调姿势", ready:"摄影者 · 拍摄"};
+let stages = compositionStages;
+let farPoint = null, pickingFar = false;
 const skipped = new Set();
 let shownStage = null;
 let session = null, reference = null, referenceFile = null, refUrl = null;
@@ -103,7 +107,7 @@ function paintOverlay(now = performance.now()) {
   transition.hidden = !celebrating;
   if (celebrating) {
     transition.style.opacity = String(Math.min(1, (1-visual.success)/.2));
-    el("aim-next").textContent = {framing:"下一步 · 调整景别", position:"已进入 · 人物站位", pose:"已进入 · 姿势引导", ready:"构图完成 · 可以拍摄"}[shownStage] || "下一步 · 调整景别";
+    el("aim-next").textContent = {distance:"下一步 · 调整摄影距离",recenter:"下一步 · 复核中心",framing:"下一步 · 调整景别", position:"已进入 · 人物位置", pose:"已进入 · 姿势引导", ready:"构图完成 · 可以拍摄"}[shownStage] || "下一步 · 调整景别";
   }
   lastOverlayPaint = now;
 }
@@ -214,9 +218,9 @@ function updateFraming(now = performance.now()) {
 
 function planZoom(result, capturedZoom, capturedAt) {
   const bg = result.background;
-  // The first accepted center already contains a measured scale. Save it through
-  // the contour/glass introduction instead of waiting for another network round trip.
-  const factor = bg?.zoomFactor || (result.completed?.includes("background") && bg?.tracking && !bg.scaleOk && bg.zoom > 0 ? 1/bg.zoom : null);
+  const legacyScale = reference?.workflow !== "composition" && result.completed?.includes("background")
+    && bg?.tracking && !bg.scaleOk && bg.zoom > 0;
+  const factor = bg?.zoomFactor || (legacyScale ? 1/bg.zoom : null);
   if (result.stage !== "framing" || !factor || !Number.isFinite(factor) || skipped.has("framing") || !el("auto-zoom").checked) return;
   const wanted = Math.max(lens.min, Math.min(lens.max, capturedZoom * factor));
   if (Math.abs(wanted - cameraZoom) < .005) {
@@ -224,6 +228,10 @@ function planZoom(result, capturedZoom, capturedAt) {
       result.message = factor < 1 ? "这张试拍照取景太近，请换一张更广的照片，或跳过景别"
         : "已达到可用倍率，地标仍偏小，请换一张取景更近的照片，或跳过景别";
     } else {
+      if (reference?.workflow === "composition") {
+        result.message = "已到倍率边界，可保持摄影距离并跳过倍率";
+        return;
+      }
       result.message = factor < 1 ? "已到最广的 1×，请后退一些，让地标在画面中变小"
         : "已达到可用倍率，请向地标靠近一些";
     }
@@ -256,12 +264,17 @@ function showReferenceGuide() {
       : "白线是取景器中的参考动作。取景时可点按画面中的主角。");
   if (!shownStage || shownStage === "background") note = "白点锁在同一处景物上，白环固定在镜头中央。缓慢转动手机让两者接近；成功后只需继续下一步。";
   if (shownStage === "framing") note = "背景轮廓固定在参考构图上。轮廓显现后会平滑匹配倍率，也可以拖动滑杆手动调整。";
-  if (shownStage === "position") note = "红框固定标出参考人物的位置和大小。先让模特走进框内，再调整动作。";
-  if (isDemo()) note = "演示模式：白点按手机转动近似跟随，可点按重新放置；站位和姿势由你手动确认。参考轮廓来自这张照片。";
+  if (shownStage === "distance") note = "保持坐位或靠点。可点「标记远景」选择模特远后方清晰的建筑或固定景物。";
+  if (shownStage === "recenter") note = "保持当前倍率，转动手机让参考中心回到白环。";
+  if (shownStage === "position") note = reference?.workflow === "composition"
+    ? "浅金色框是参考人物，青色框角是当前主角。两者位置大致接近即可。"
+    : "浅金色框固定标出参考人物的位置和大小。先让模特走进框内，再调整动作。";
+  if (isDemo()) note = "演示模式：白点按手机转动近似跟随，可点按重新放置；距离、构图和姿势由你手动确认。参考轮廓来自这张照片。";
   el("subject-note").textContent = (refMirrored ? "参考照已水平翻转。" : "") + note;
 }
 
 function display(result, pendingStage) {
+  if (shownStage === "pose" && result?.stage && !["ready","pose"].includes(result.stage)) poseBudget.reset();
   if(poseBudget.done && reference && source) result={...result,stage:'ready',ready:true,mode:'ready',message:'可以拍摄了',captureReason:'pose_budget'};
   latest = result;
   if (result?.completed) {
@@ -284,7 +297,7 @@ function display(result, pendingStage) {
   [...el("steps").children].forEach((li, i) => {
     const bypassed = skipped.has(stages[i]);
     li.className = bypassed ? "skipped" : i === index ? "active" : i < index ? "done" : "";
-    li.setAttribute("aria-label", stageNames[i] + (bypassed ? "，已跳过" : ""));
+    li.setAttribute("aria-label", stageNames[stages[i]] + (bypassed ? "，已跳过" : ""));
     if (i === index) li.setAttribute("aria-current", "step");
     else li.removeAttribute("aria-current");
   });
@@ -293,10 +306,10 @@ function display(result, pendingStage) {
   el("shutter").disabled = !result?.ready || !!shotRequested || nativeCapturing;
   const skipButton = el("skip-stage");
   skipButton.hidden = index < 0 || shownStage === "ready";
-  if (!skipButton.hidden) skipButton.textContent = "跳过" + stageNames[index];
+  if (!skipButton.hidden) skipButton.textContent = "跳过" + stageNames[shownStage];
   el("restore-steps").hidden = !skipped.size || !reference;
   el("restart-aim").hidden = !completed.has("background") || !reference || !source;
-  const aiming = shownStage === "background";
+  const aiming = shownStage === "background" || shownStage === "recenter";
   const framing = shownStage === "framing";
   const background = aiming || framing;
   const building = framing && reference?.buildingOutline;
@@ -308,7 +321,7 @@ function display(result, pendingStage) {
   el("legend").dataset.stage = shownStage || "";
   el("legend").dataset.background = building || backgroundShape ? "outline" : background ? "rings" : "";
   const poseLabel = {person:"参考动作轮廓", joints:"简化动作轮廓"}[reference?.outline?.kind] || "参考关节";
-  el("target-label").textContent = building ? building.name + "参考轮廓" : backgroundShape ? "参考背景轮廓" : framing ? "参考地标" : aiming ? (isDemo() ? "演示落点" : "参考中心") : standing ? "目标站位" : poseLabel;
+  el("target-label").textContent = building ? building.name + "参考轮廓" : backgroundShape ? "参考背景轮廓" : framing ? "参考地标" : aiming ? (isDemo() ? "演示落点" : "参考中心") : standing ? "参考人物" : poseLabel;
   el("current-label").textContent = background ? "镜头中心" : standing ? "当前人物" : "实时关节";
   el("current-key").hidden = !(aiming || standing && result?.selected ||
     posing && result?.pose?.actual.some(Boolean));
@@ -317,7 +330,7 @@ function display(result, pendingStage) {
   updateDemoUI();
   if (result) {
     const adjustingScale = framing && ["coverage", "steady", "scale"].includes(result.background?.control);
-    tell(adjustingScale ? "摄影者 · 匹配景别" : actors[index], result.message, result.mode, true);
+    tell(adjustingScale ? "摄影者 · 匹配景别" : actors[shownStage], result.message, result.mode, true);
   }
   syncPhone();
 }
@@ -326,13 +339,15 @@ function demoFrame(stage) {
   const index = stages.indexOf(stage);
   const messages = {
     background:"点按地标放置白点，缓慢转动手机让它靠近白环；也可手动确认",
+    distance:"模特保持原位，手动确认人物与远景的比例",
+    recenter:"检查变焦后的中心，再手动确认",
     framing:"对照参考轮廓调整画面，景别合适后点击确认",
-    position:"请模特站进参考人物框，位置合适后点击确认",
+    position:"对照参考人物框核对位置，合适后点击确认",
     pose:"请模特照着参考动作摆姿势，完成后点击确认",
     ready:"演示步骤已确认，可以拍摄"
   };
   return {demo:true,stage,ready:stage === "ready",mode:stage === "ready" ? "ready" : "adjust",message:messages[stage],
-    boxes:[],selected:null,background:null,pose:null,hold:0,checks:stages.slice(0,4).map((_,i)=>i<index),
+    boxes:[],selected:null,background:null,pose:null,hold:0,checks:stages.slice(0,-1).map((_,i)=>i<index),
     completed:index>0 && !skipped.has("background") ? ["background"] : [],skipped:[...skipped]};
 }
 
@@ -343,11 +358,11 @@ function updateDemoUI() {
   el("pause-analysis").hidden = demo;
   if (demo && source !== "camera") el("preview-status").textContent = "演示模式 · 手动确认";
   el("auto-zoom-label").textContent = demo ? "演示变焦" : "自动匹配";
-  const captions = {background:"确认对准",framing:"景别已合适",position:"站位已合适",pose:"动作已摆好",ready:"演示完成"};
+  const captions = {background:"确认对准",distance:"距离已合适",recenter:"中心已复核",framing:"景别已合适",position:"站位已合适",pose:"动作已摆好",ready:"演示完成"};
   el("demo-next").textContent = captions[shownStage] || "确认对准";
   el("demo-next").disabled = shownStage === "ready";
   el("demo-help").textContent = shownStage === "background" ? "白点按手机转动近似跟随；无方向数据时可点按放置并手动确认。"
-    : "演示模式：站位和动作由你确认，保留参考轮廓作为提示。";
+    : "演示模式：摄影距离、构图和动作由你确认，保留参考轮廓作为提示。";
 }
 
 function advanceDemo() {
@@ -382,7 +397,7 @@ function applySteps(nextStage) {
   invalidate(nextStage, pendingTap);
   if (isDemo()) return;
   if (!shownStage) {promptForInput(); return;}
-  tell(actors[stages.indexOf(shownStage)], "正在读取取景画面");
+  tell(actors[shownStage], "正在读取取景画面");
   analyze();
 }
 
@@ -438,7 +453,7 @@ function promptForInput() {
     let message = "正在读取取景画面";
     if (shownStage === "background") message = "先让参考地标入镜，再缓慢转动镜头，让白点靠近中央白环";
     if (shownStage === "framing") message = "对照参考轮廓调整倍率，让建筑的位置和大小接近参考";
-    tell(actors[stages.indexOf(shownStage)], message);
+    tell(actors[shownStage], message);
   }
 }
 
@@ -447,7 +462,10 @@ async function loadReference(file, tap, note) {
   cancelCameraOpening();
   const version = ++referenceVersion;
   const newPhoto = file !== referenceFile;
+  pickingFar = false;
+  el("mark-far").hidden = true;
   if (newPhoto) {
+    farPoint = null;
     referenceNote = note || "";
     skipped.clear();
     refMirrored = false;
@@ -484,6 +502,10 @@ async function loadReference(file, tap, note) {
     el("ref-empty").hidden = true;
     layout();
     const form = new FormData();
+    form.append("workflow", "composition");
+    if (farPoint) {
+      form.append("farX", farPoint[0]); form.append("farY", farPoint[1]);
+    }
     form.append("reference", file);
     form.append("mirror", refMirrored ? "1" : "0");
     form.append("viewpoint", referenceNote);
@@ -498,6 +520,14 @@ async function loadReference(file, tap, note) {
     }
     session = data.id;
     reference = data.reference;
+    stages = reference.workflow === "composition" ? compositionStages : ["background", "framing", "position", "pose", "ready"];
+    el("steps").replaceChildren(...stages.map(stage => {
+      const item = document.createElement("li");
+      item.textContent = stageNames[stage];
+      return item;
+    }));
+    el("mark-far").hidden = reference.workflow !== "composition";
+    el("mark-far").textContent = "标记远景";
     if(reference.preview) {
       refPhoto.src=el('scene-thumb').src=reference.preview;
       refPhoto.style.transform=el('scene-thumb').style.transform='';
@@ -528,6 +558,7 @@ function flipReference(manual) {
   if (manual) manualDirection = true;
   else autoFlippedSource = sourceVersion;
   refMirrored = !refMirrored;
+  if (farPoint) farPoint = [1 - farPoint[0], farPoint[1]];
   const box = reference?.boxes.length > 1 ? reference.box : null;
   const selected = refTap || (box && [(box[0]+box[2])/2, (box[1]+box[3])/2]);
   loadReference(referenceFile, selected ? [1-selected[0], selected[1]] : null);
@@ -544,13 +575,23 @@ el("ref-file").onchange = e => {
   if (file) {cancelLibrarySelection(); loadReference(file);}
   e.target.value = "";
 };
+el("mark-far").onclick = () => {
+  pickingFar = !pickingFar;
+  el("mark-far").textContent = pickingFar ? "请点照片中模特远后方的地标（可取消）" : "标记远景";
+};
 el("ref-overlay").onclick = e => {
+  if (pickingFar && referenceFile) {
+    farPoint = positionIn(e);
+    skipped.delete("distance");
+    loadReference(referenceFile);
+    return;
+  }
   if (referenceFile) loadReference(referenceFile, positionIn(e));
 };
 el("overlay").onclick = e => {
   if (isDemo()) return;
   if (!session || !source) return;
-  if (shownStage === "background" || shownStage === "framing") return;
+  if (["background", "framing", "recenter"].includes(shownStage)) return;
   invalidate();
   pendingTap = positionIn(e);
   tell("主角", "正在确认点选的人物");
@@ -565,14 +606,14 @@ el("zoom").oninput = e => {
   pendingFramingZoom=null;glass.clear();
   framingSequence.cancelZoom();
   setCameraZoom(Number(e.target.value));
-  invalidate("framing", null, true);
+  invalidate(["distance","background"].includes(shownStage) ? shownStage : "framing", null, true);
   tell("摄影者 · 调整景别", isDemo() ? "倍率已调整，景别合适后点击确认" : "倍率已调整，正在核对建筑轮廓");
 };
 el("auto-zoom").onchange = () => {
   pendingFramingZoom=null;lens.cancel();glass.clear();
   if (isDemo()) demoZoomPlayed = !el("auto-zoom").checked;
   framingSequence.cancelZoom();
-  invalidate("framing", null, true);
+  invalidate(["distance","background"].includes(shownStage) ? shownStage : "framing", null, true);
   tell("摄影者 · 调整景别", isDemo() ? "演示倍率可随时手动调整" : el("auto-zoom").checked ? "将根据新的取景画面自动匹配倍率" : "已切换为手动调整倍率");
 };
 const cancelLibrarySelection = setupLibrary((file, note) => loadReference(file, undefined, note), onDevice, async()=>{
@@ -979,7 +1020,10 @@ if (nativeAndroid) setInterval(() => {
 setInterval(() => {
   const now=performance.now();
   applyHint(hints.flush(now));
-  const poseActive=shownStage==='pose' && hints.current?.key==='pose' && !!source && !analysisPaused && !document.hidden;
+  const freshPose = reference?.workflow !== "composition" ||
+    (latest?.stage === "pose" && latest.pose && now - latestCapturedAt <= 3500);
+  const poseActive = freshPose && shownStage === "pose" && hints.current?.key === "pose"
+    && !!source && !analysisPaused && !document.hidden;
   const wasDone=poseBudget.done;
   poseBudget.tick(now,poseActive);
   if(!wasDone && poseBudget.done) {generation++;display(latest);tell('拍摄','可以拍摄了','ready');}

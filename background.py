@@ -27,6 +27,8 @@ class Background(Prepared):
         self.template = gray, mask
         self.learned = {}
         self.subject = None
+        self.far_bounds = None
+        self.retry_far = False
         self.reference = self.features(gray, mask)
         self.flipped = self.features(cv2.flip(gray, 1), cv2.flip(mask, 1))
         self.usable = len(self.reference[0]) >= 8 or len(self.flipped[0]) >= 8 or bool(len(self.landmarks))
@@ -125,6 +127,14 @@ class Background(Prepared):
         gray, mask = await self.background_image_async(image, people)
         if self._scene is not None:
             tracked = self._scene.measure(gray, mask, tolerance, scale_limit)
+            if tracked is not None and self.retry_far and self.far_bounds is not None and tracked.get("farScale") is None:
+                # A coarse scene lock can predate a good view of the chosen landmark.
+                # Retry registration periodically when that region has too few tracked corners.
+                self._scene.far_misses += 1
+                if self._scene.far_misses >= 3:
+                    tracked = None
+            elif tracked is not None:
+                self._scene.far_misses = 0
             if tracked is not None:
                 if tracked["zoom"] is None:
                     tracked = await self.recover_scale_async(gray, mask, tracked, tolerance, scale_limit)
@@ -276,6 +286,15 @@ class Background(Prepared):
             near_live = np.linalg.norm((live_hits - live) * size, axis=1)
             if np.any((near_ref < .12 * min(size)) & (near_live < .16 * min(size))):
                 anchors.append({"id": i, "current": live.tolist()})
+        if self.far_bounds is not None and not flipped:
+            bounds = self.far_bounds
+            inside = ((ref_hits >= bounds[:2]) & (ref_hits <= bounds[2:])).all(axis=1)
+            far_scale = landmark_scale(ref_hits[inside], live_hits[inside], size)
+            if far_scale is not None:
+                x, y, r, b = bounds
+                region = np.float32([[x,y], [r,y], [r,b], [x,b]])
+                mapped = cv2.perspectiveTransform((region * size)[None], transform)[0] / size
+                result.update(farScale=far_scale, farQuad=mapped.tolist())
         return result | {"anchors": anchors, "trackingQuad": quad.tolist()}
 
 
@@ -303,6 +322,13 @@ class SceneAnchor:
         self.scale_checks = 0
         self.matrix = np.eye(3)
         self.size = np.float32([gray.shape[1], gray.shape[0]])
+        self.far_misses = 0
+        self.far_mask = None
+        if result.get("farQuad") is not None:
+            polygon = np.int32(np.rint(np.asarray(result["farQuad"]) * self.size))
+            region = np.zeros_like(mask)
+            cv2.fillConvexPoly(region, polygon, 255)
+            self.far_mask = region
         self.markers = np.float32([*(result.get("trackingQuad") or result["quad"]), result["current"],
                                   *[a["current"] for a in result["anchors"]]])
         return self
@@ -369,6 +395,12 @@ class SceneAnchor:
             result = frame_error(markers[:4], markers[4], self.size[0]/self.size[1], len(src), self.last_zoom,
                                  tolerance, scale_limit, local=self.local)
         self.last_zoom = result["zoom"]
+        if self.far_mask is not None:
+            xy = np.rint(src).astype(int)
+            within = self.far_mask[xy[:, 1], xy[:, 0]] != 0
+            relative = landmark_scale(src[within]/self.size, dst[within]/self.size, self.size)
+            if relative is not None:
+                result["farScale"] = self.base["farScale"] * relative
         anchors = [{"id": a["id"], "current": p.tolist()} for a, p in zip(self.base["anchors"], markers[5:])]
         return result | {"anchors": anchors, "trackingQuad": markers[:4].tolist()}
 

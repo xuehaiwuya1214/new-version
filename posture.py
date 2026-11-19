@@ -48,6 +48,27 @@ def measure_position(reference, current, min_overlap=POSITION_IOU):
             "targetBox": reference[:4].tolist(), "box": current[:4].tolist()}
 
 
+def measure_subject_center(reference_box, person, aspect, tolerance, target=None):
+    if reference_box is None or person is None:
+        return None
+    basis = "box"
+    wanted, actual = center(reference_box), center(person.box)
+    if target is not None and target.basis == "torso":
+        live = target.anchor(person, person.visible(LIVE_CONFIDENCE), "torso")
+        if live is not None:
+            basis = "torso"
+            wanted = target.anchor(target.reference, target.visible, "torso")[0]
+            actual = live[0]
+    delta = (actual - wanted) * [aspect, 1.] / min(aspect, 1.)
+    distance = float(np.linalg.norm(delta))
+    ok = distance <= tolerance
+    message = ("人物位置已接近，请保持片刻" if ok else
+               f"人物位置偏{direction(delta)}，请对照浅金色参考框调整")
+    return {"ok": ok, "basis": basis, "target": wanted.tolist(), "current": actual.tolist(),
+            "centerDistance": round(distance, 4), "tolerance": tolerance, "message": message,
+            "targetBox": reference_box[:4].tolist(), "box": person.box[:4].tolist()}
+
+
 class PoseTarget:
     def __init__(self, person, width, height):
         self.metric = np.array([width / height, 1.])
@@ -100,20 +121,57 @@ class PoseTarget:
             return None
         return origin, scale
 
-    def compare(self, person, min_overlap=POSITION_IOU):
+    def distance_check(self, person, bg, tolerance):
+        if person is None or not bg or not bg.get("tracking") or not bg.get("farScale"):
+            return None
+        # Boxes vary with arms and legs. Compare the same anatomical span in both frames.
+        visible = person.visible(LIVE_CONFIDENCE)
+        for basis in ("torso", "shoulders", "face"):
+            ref = self.anchor(self.reference, self.visible, basis)
+            live = self.anchor(person, visible, basis)
+            if ref is None or live is None:
+                continue
+            person_scale = live[1] / ref[1]
+            ratio = person_scale / bg["farScale"]
+            aligned = 1 / tolerance <= ratio <= tolerance
+            direction = "hold" if aligned else "back" if ratio > 1 else "forward"
+            return {"ok": aligned, "ratio": round(ratio, 3), "basis": basis,
+                    "personScale": round(person_scale, 3), "farScale": round(bg["farScale"], 3),
+                    "direction": direction}
+        return None
+
+    def compare(self, person, min_overlap=POSITION_IOU, *, local_pose=False):
         if person is None:
             return None, None
         position = measure_position(self.reference.box, person.box, min_overlap)
+        return position, self.compare_pose(person, local_pose=local_pose)
+
+    def compare_pose(self, person, *, local_pose=False):
+        if person is None:
+            return None
         visible = person.visible(LIVE_CONFIDENCE) & self.keypoints
         pose = {"ok": False, "actual": points_json(person.xy, visible), "target": self.points, "joint": None}
+        goals = self.goals
+        pose_scale = self.scale
+        if local_pose:
+            ref = self.anchor(self.reference, self.visible, self.basis)
+            live = self.anchor(person, person.visible(LIVE_CONFIDENCE), self.basis)
+            if live is None:
+                return pose | {"message": "请让主角的脸、肩部或躯干清楚入镜"}
+            origin, pose_scale = live
+            factor = pose_scale / self.scale
+            offset = origin - factor * ref[0]
+            goals = factor * self.goals + offset
+            pose.update(target=points_json(goals, self.keypoints),
+                        transform={"scale": factor, "offset": offset.tolist()})
         issues, missing = [], []
         for j in self.required:
             if not visible[j]:
                 missing.append(j)
                 continue
-            delta = (self.goals[j] - person.xy[j]) * self.metric
+            delta = (goals[j] - person.xy[j]) * self.metric
             tolerance = .23 if j in (0, 1, 2, 5, 6, 11, 12) else .32
-            error = np.linalg.norm(delta) / max(.012, tolerance * self.scale)
+            error = np.linalg.norm(delta) / max(.012, tolerance * pose_scale)
             issues.append((error, j, f"请模特将{NAMES[j]}向画面{direction(delta)}移，靠近目标点"))
         for a, b, name, limit in self.angles:
             if not (visible[a] and visible[b]):
@@ -127,13 +185,13 @@ class PoseTarget:
             issues.append((abs(diff) / limit, a, hint))
         if missing:
             j = missing[0]
-            return position, pose | {"joint": j, "message": f"请让参考中可见的{NAMES[j]}清楚入镜"}
+            return pose | {"joint": j, "message": f"请让参考中可见的{NAMES[j]}清楚入镜"}
         if not issues:
-            return position, pose | {"message": "请让模特的脸或肩臂清楚入镜"}
+            return pose | {"message": "请让模特的脸或肩臂清楚入镜"}
         worst, joint, message = max(issues, key=lambda entry: entry[0])
         if worst <= 1:
-            return position, pose | {"ok": True, "message": "关键点已进入参考姿势范围"}
-        return position, pose | {"joint": joint, "message": message}
+            return pose | {"ok": True, "message": "关键点已进入参考姿势范围"}
+        return pose | {"joint": joint, "message": message}
 
     def framing_hint(self, person):
         """背景尚未定位时，用可见的人像解释取景差异，不参与机位通过判定。"""

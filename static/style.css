@@ -401,7 +401,7 @@ h1 {
 #legend[data-stage=position] i {
   width:13px;
   height:9px;
-  border:1.5px solid #ff444f;
+  border:1.5px solid #e3c79e;
 }
 
 #legend[data-background=rings] #current-key i {border:2px solid #fffdf8;background:none}

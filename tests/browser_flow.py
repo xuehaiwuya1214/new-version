@@ -109,7 +109,7 @@ def expect_position_box(page, box):
       let gold=0;
       for (let y=0;y<h;y+=2) for (let x=0;x<w;x+=2) {
         const i=4*(y*w+x);
-        if (data[i]<220 || data[i+1]>125 || data[i+2]>150 || data[i+3]<180) continue;
+        if (Math.abs(data[i]-227)>3 || Math.abs(data[i+1]-199)>3 || Math.abs(data[i+2]-158)>3 || data[i+3]<180) continue;
         if (Math.min(Math.abs(x-l),Math.abs(x-r),Math.abs(y-t),Math.abs(y-b))>3) return false;
         gold++;
       }

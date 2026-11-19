@@ -66,11 +66,11 @@ def campus_notes():
             for r in rows if r.get("sha256") and r.get("location") and "待确认" not in r["location"]}
 
 
-def point(args):
-    if "x" not in args and "y" not in args:
+def point(args, x="x", y="y"):
+    if x not in args and y not in args:
         return None
     try:
-        p = np.array([float(args["x"]), float(args["y"])])
+        p = np.array([float(args[x]), float(args[y])])
     except (KeyError, ValueError, TypeError) as exc:
         raise ValueError("点选坐标无效。") from exc
     if not np.isfinite(p).all() or (p < 0).any() or (p > 1).any():
@@ -117,7 +117,9 @@ def start():
     if phone_aspect is not None:
         frame = crop_phone_reference(frame, phone_aspect, get_models())
     note = request.form.get("viewpoint", "").strip()[:100] or campus_notes().get(hashlib.sha256(data).hexdigest(), "")
-    guide = Guide(get_models(), frame, note, point(request.form))
+    guide = Guide(get_models(), frame, note, point(request.form),
+                  composition=request.form.get("workflow") == "composition",
+                  far_point=point(request.form, "farX", "farY"))
     if phone_aspect is not None:
         guide.reference["preview"] = reference_preview(frame)
     if request.form.get("client") == "android-preview":
